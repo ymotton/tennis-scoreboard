@@ -1,0 +1,421 @@
+<html style="width: 100%; height: 100%;">
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.8.0/p5.js"></script>
+	<script>
+	// Licensed under Creative Commons (CC)
+	// by https://github.com/ymotton
+	// on 2019-07-02
+	var IDENTITY = function (x) { return x; };
+	Array.prototype.contains = function (value) {
+		if (this.length === 0) return false;
+
+		for (var i = 0; i < this.length; i++) {
+			if (this[i] === value) return true;
+
+		}
+		return false;
+	};
+	Array.prototype.distinct = function (selector) {
+		if (this.length > 0) {
+			// This ensures that arrays of object or function instances have a way of uniquely identifying instances
+			if (["object", "function"].contains(typeof this[0])) {
+				selector = selector || Object.getObjectID;
+			}
+		}
+		var result = [];
+		var distinctKeys = {};
+		for (var i = 0; i < this.length; i++) {
+			var item = this[i];
+			var value = selector ? selector(item) : item;
+			if (!distinctKeys[value]) {
+				distinctKeys[value] = true;
+				result.push(item);
+			}
+		}
+		return result;
+	};
+	Array.prototype.orderBy = function(selector) {
+		selector = selector || IDENTITY;
+		var clone = this.slice(0);
+		clone.sort(function(a, b) {
+			return selector(a) - selector(b);
+		});
+		return clone;
+	};
+	Array.prototype.selectMany = function (selector) {
+		selector = selector || IDENTITY;
+		var arrayOfvalues = this.map(selector);
+		var result = [];
+		for (var j = 0; j < arrayOfvalues.length; j++) {
+			var values = arrayOfvalues[j];
+			for (var index = 0; index < values.length; index++) {
+				var item = values[index];
+				result.push(item);
+			}
+		}
+		return result;
+	};
+	
+	var Y_AXIS = 1;
+	var X_AXIS = 2;
+	var winningSets = 2;
+	var headerColors, highlightColors, setsColors;
+	var paddings, rowHeight, columns, fontSizes, highlights;
+	var players, score, serving, highlight;
+
+	var font;
+	function preload() {
+		font = loadFont('assets/inconsolata.otf');
+	}
+	
+	function startTranscription(team1, team2) {
+		players = [
+			{
+				index: 0,
+				name: team1,
+			},
+			{
+				index: 1,
+				name: team2,
+			}
+		];
+		score = {
+			game: ['0', '0'],
+			sets: [
+				[0, 0],
+			],
+		};
+		serving = 0;
+		highlight = '';
+		
+		textSize(fontSizes.highlight);
+		columns = {
+			serving: 4,
+			highlight: Math.max.apply(null, highlights.map(function (x) { return textWidth(x); })) + 20,
+			header: Math.max.apply(null, players.map(function (x) { return textWidth(x.name); })) + 40,
+			game: 40,
+			set: 36,
+		};
+		matchHistory = [{ timestamp: 0 }];
+	}
+
+	function setup() {
+		highlights = [
+			"BREAK POINT",
+			"SET POINT",
+			"MATCH POINT",
+		];
+	
+		textFont(font);
+	
+		paddings = {
+			horizontal: 10,
+			vertical: 3
+		};
+		fontSizes = {
+			highlight: 20,
+			header: 18,
+			points: 18
+		};
+		
+		rowHeight = 26;
+		createCanvas(480, rowHeight*3);
+		
+		headerColors = [color(12, 16, 72), color(4, 6, 71)];
+		highlightColors = [color(239, 161, 47), color(224, 115, 29)];
+		setsColors = [color(236, 236, 236), color(220, 220, 220)];
+	}
+	
+	function draw() {
+		if (!players) return;
+		clear();
+		
+		if (highlight) {
+			setGradient(columns.serving, 0, columns.highlight, rowHeight, highlightColors[0], highlightColors[1], Y_AXIS);
+			textAlign(LEFT, TOP);
+			textSize(fontSizes.highlight);
+			stroke(255);
+			fill(255);
+			text(highlight, paddings.horizontal+columns.serving, 0);
+		}
+		
+		function renderTeam(player, score) {
+			var index = player.index;
+			var yOffset = (index+1)*rowHeight;
+			var xOffset = 0;
+			if (serving === index) {
+				setGradient(xOffset, yOffset, columns.serving, rowHeight, highlightColors[0], highlightColors[1], Y_AXIS);
+			}
+			xOffset += columns.serving;
+			
+			setGradient(xOffset, yOffset, columns.header, rowHeight, headerColors[0], headerColors[1], Y_AXIS);
+			textAlign(LEFT, TOP);
+			textSize(fontSizes.header);
+			stroke(255);
+			fill(255);
+			text(player.name, paddings.horizontal+xOffset, yOffset+paddings.vertical);
+			
+			xOffset += columns.header;
+			setGradient(xOffset, yOffset, columns.game, rowHeight, highlightColors[0], highlightColors[1], Y_AXIS);
+			textAlign(CENTER, TOP);
+			textSize(fontSizes.points);
+			stroke(255);
+			fill(255);
+			text(score.game[index], xOffset+(columns.set/2), yOffset+paddings.vertical);
+
+			xOffset += columns.game;
+			textAlign(CENTER, TOP);
+			for (var i = 0; i<score.sets.length; i++) {
+				setGradient(xOffset, yOffset, columns.game, rowHeight, setsColors[0], setsColors[1], Y_AXIS);
+				stroke(244);
+				line(xOffset, yOffset, xOffset, yOffset+rowHeight);
+				textAlign(CENTER, TOP);
+				textSize(fontSizes.points);
+				stroke(29);
+				fill(29);
+				text(score.sets[i][index], xOffset+(columns.set/2), yOffset+paddings.vertical);
+				xOffset += columns.set;
+			}
+		}
+		
+		renderTeam(players[0], score);
+		renderTeam(players[1], score);
+		
+		if (matchHistory[matchHistory.length - 1] && !matchHistory[matchHistory.length - 1].image) {
+			matchHistory[matchHistory.length - 1].image = defaultCanvas0.toDataURL('image/png').substring(22);
+		}
+	}
+	
+	function updateGameState(score, winnerIndex) {
+		var setsWon = score.sets.filter(function (x) { return isWinningSet(x, winnerIndex); }).length;
+		var decidingSet = setsWon === winningSets-1;
+		if (setsWon === winningSets) return;
+	
+		var loserIndex = 1-winnerIndex;
+		var game = score.game;
+		var set = score.sets[0];
+		var isTieBreak = set[winnerIndex] === 6 && set[loserIndex] === 6;
+		
+		var breaks = 0;
+		var gameWon = false;
+		if (isTieBreak) {
+			game[winnerIndex] = ''+(parseInt(game[winnerIndex])+1);
+			gameWon = parseInt(game[winnerIndex])-1 > parseInt(game[loserIndex]) && parseInt(game[winnerIndex]) > 6;
+		} else {
+			switch (game[winnerIndex]) {
+				case '0': 
+					game[winnerIndex] = '15';
+					break;
+				case '15': 
+					game[winnerIndex] = '30';
+					break;
+				case '30': 
+					game[winnerIndex] = '40';
+					
+					if (game[loserIndex] === '0') breaks = 3;
+					if (game[loserIndex] === '15') breaks = 2;
+					if (game[loserIndex] === '30') breaks = 1;
+
+					break;
+				case '40': 
+					if (game[loserIndex] === '40' || game[loserIndex] === 'A') {
+						game[winnerIndex] = 'A';
+						game[loserIndex] = '40';
+						breaks = 1;
+					} else {
+						gameWon = true;
+					}
+					
+					break;
+				case 'A':
+					gameWon = true;
+					break;
+			} 
+		}
+		
+		if (gameWon) {
+			set[winnerIndex]++;
+			
+			if (isWinningSet(set, winnerIndex)) {
+				if (decidingSet) return;
+				
+				score.sets.splice(0, 0, [0,0]);
+			} 
+			
+			score.game = ['0', '0'];
+			serving = 1-serving;
+			highlight = '';
+		} else {
+			if (breaks > 0) {
+				var winSetIfBreak = (set[winnerIndex] === 5 && set[loserIndex] < 5) || set[winnerIndex] === 6;
+				if (winSetIfBreak) {
+					if (decidingSet) { 
+						highlight = 'MATCH POINT';
+					} else {
+						highlight = 'SET POINT';
+					}
+				} else {
+					if (serving !== winnerIndex) {
+						highlight = 'BREAK POINT';
+					}
+				}
+			} else {
+				highlight = '';
+			}
+		}
+		
+		return score;
+	}
+	function isWinningSet(set, index) {
+		return (set[index] === 6 && set[1-index] < 5) || set[index] === 7;
+	}
+	
+	function setGradient(x, y, w, h, c1, c2, axis) {
+	  noFill();
+
+	  if (axis === Y_AXIS) {
+		// Top to bottom gradient
+		for (let i = y; i <= y + h; i++) {
+		  let inter = map(i, y, y + h, 0, 1);
+		  let c = lerpColor(c1, c2, inter);
+		  stroke(c);
+		  line(x, i, x + w, i);
+		}
+	  } else if (axis === X_AXIS) {
+		// Left to right gradient
+		for (let i = x; i <= x + w; i++) {
+		  let inter = map(i, x, x + w, 0, 1);
+		  let c = lerpColor(c1, c2, inter);
+		  stroke(c);
+		  line(i, y, i, y + h);
+		}
+	  }
+	}
+	
+	var matchHistory = [];
+	function keyPressed() {
+		if (keyCode === LEFT_ARROW) {
+			updateGameState(score, 0);
+			matchHistory.push({ winnerIndex: 0, timestamp: player.getCurrentTime() });
+		} else if (keyCode === RIGHT_ARROW) {
+			updateGameState(score, 1);
+			matchHistory.push({ winnerIndex: 1, timestamp: player.getCurrentTime() });
+		} else if (keyCode === UP_ARROW) {
+			
+		} else if (keyCode === DOWN_ARROW) {
+		
+		} else if (keyCode === BACKSPACE) {
+			serving = 1-serving;
+		}
+	}
+	</script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+	<script src="https://kit.fontawesome.com/c45dd1ae6f.js"></script>
+	<style>
+		html,body {
+			width: 100%;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			margin: 0px;
+			position: relative;
+			overflow: hidden;
+		}
+		.address-bar {
+			width: 100%;
+			padding: 10px;
+		}
+		.address-bar label:first-child {
+			display: inline-block;
+			width: 80px;
+		}
+		.address-bar input[type=string] {
+			width: calc(100% - 120px);
+		}
+		
+		.game-details {
+			width: 100%;
+			padding: 10px;
+		}
+		.game-details label:first-child {
+			display: inline-block;
+			width: 80px;
+		}
+		#player {
+			width: 100%;
+		}
+		#defaultCanvas0 {
+			position: absolute;
+			left: 30px;
+			top: 100px;
+		}
+	</style>
+  </head>
+  <body>
+	<div class="address-bar">
+		<label>Video URL:</label>
+		<input id="videoUrl" type="string" value="https://www.youtube.com/watch?v=Gt7y8qSx124">
+	</div>
+	<div class="game-details">
+		<label>Teams:</label>
+		<input id="teamOne" type="string" value="Team 1">
+		<label>vs</label>
+		<input id="teamTwo" type="string" value="Team 2">
+		<a id="startStopButton" class="waves-effect waves-light btn"><i class="fas fa-play"></i> START TRANSCRIBING</a>
+	</div>
+	<div id="player"></div>
+	<script src="https://www.youtube.com/iframe_api"></script>
+	<script>
+	var player;
+	var videoUrl = document.getElementById('videoUrl');
+	var startStopButton = document.getElementById('startStopButton');
+	var teamOne = document.getElementById('teamOne');
+	var teamTwo = document.getElementById('teamTwo');
+	var video_id;
+	startStopButton.addEventListener('click', function() {
+		if (!player) {
+			video_id = youtube_parser(videoUrl.value);
+			player = new YT.Player('player', {
+			  height: '1080',
+			  width: '1920',
+			  videoId: video_id,
+			  events: {
+				'onReady': onPlayerReady,
+				'onStateChange': onPlayerStateChange
+			  }
+			});	
+			startStopButton.innerHTML = '<i class="fas fa-cloud-download-alt"></i> STOP & SAVE';
+		} else {
+			var a = document.createElement("a");
+			document.body.appendChild(a);
+			a.style = "display: none";
+			var blob = new Blob([JSON.stringify(matchHistory)], {type : 'application/octet-stream'});
+			var url = window.URL.createObjectURL(blob);
+			a.href = url;
+			a.download = video_id+".json";
+			a.click();
+			window.URL.revokeObjectURL(url);
+		}
+	});
+	
+	function youtube_parser(url){
+		var regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*/;
+		var match = url.match(regExp);
+		return (match&&match[7].length==11)? match[7] : false;
+	}
+		
+	function onYouTubeIframeAPIReady() {
+	}
+
+	function onPlayerReady(event) {
+		event.target.seekTo(0);
+		event.target.playVideo();
+		startTranscription(teamOne.value, teamTwo.value);
+	}
+
+	function onPlayerStateChange(event) {
+	}
+	</script>
+  </body>
+</html>
